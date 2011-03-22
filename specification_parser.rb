@@ -14,23 +14,23 @@ class SpecificationParser
     @specifications = {}
   end
 
-  def load_schema(schema_name, schema_content)
-    @schemas[schema_name]=schema_content if validate_schema(schema_name,schema_content)
+  def load_schema( schema_name, schema_content )
+    @schemas[schema_name]=validate_schema(schema_name,schema_content)
   end
 
   def load_schema_files( *schema_paths )
     parse_paths(schema_paths) do |name, data|
-      @schemas[name]=data if validate_schema(name,data)
+      @schemas[name]=validate_schema(name,data)
     end
   end
 
   def load_specification( specification_name, specification_content )
-    @schemas[specification_name]=specification_content if validate_schema(specification_name,specification_content)
+    @schemas[specification_name]=validate_schema(specification_name,specification_content)
   end
 
   def load_specification_files( *specification_paths )
     parse_paths(specification_paths) do |name, data|
-      @specifications[p]=data if validate_specification(name,data)
+      @specifications[p]= validate_specification(name,data)
     end
   end
 
@@ -39,34 +39,36 @@ class SpecificationParser
   def validate_specification( specification_name, specification_yaml )
     #Try to identify which schema to use, we can't just try each one, because if they are all wrong
     #then it is unclear which set of error messages to print. So we must come up with some signatures
-    #to determine if the schema it is attempting to use. OR if all are wrong default to a certain schema.
+    #to determine the schema it is attempting to use. OR if all are wrong default to a certain schema?
     #need to discuss what option is best
-    schema = @schemas["appliance-schema-0.9.x"]
-
-    validator = Kwalify::Validator( schema ) #Fixed schema for now
+    schema_name = "appliance-schema-0.9.x.yaml"
+    schema = @schemas[schema_name]
+    validator = Kwalify::Validator.new( schema ) #Fixed schema for now
     parser = Kwalify::Yaml::Parser.new( validator )
-    errors = parser.parse( specification_yaml )
-    readable = ""
-
+    document = parser.parse( specification_yaml )
+    errors = parser.errors()
     status = parse_errors(validator, errors) do |linenum, column, path, message|
-      readable += "#{linenum}:#{column} [#{path}] #{message}\n" # default kwalify style for now
+      p "ln #{linenum}: col#{column} [#{path}] #{message}\n" # default kwalify style for now
     end
-
-    raise "The specification #{specification_name} was invalid according to schema #{schema}: #{readable}" unless status
-    status
+    raise %(The appliance specification "#{specification_name}" was invalid according to schema "#{schema_name}") unless status
+    document
   end
 
   def validate_schema( schema_name, schema_yaml )
     #Special validator bound to the kwalify meta schema
     meta_validator = Kwalify::MetaValidator.instance()
-    parser = Kwalify::Yaml::Parser.new( meta_validator )
-    errors = parser.parse( schema_yaml, :filename => schema_name )
-
+    # validate schema definition
+    document = Kwalify::Yaml.load( schema_yaml )
+    #Do _NOT_ use the Kwalify parser for Meta-parsing!
+    #Parser for the meta is buggy and does not work as documented!
+    #The CLI app seems to unintentionally work around the issue.
+    #Only validate using older/less useful method
+    errors = meta_validator.validate( document )
     status = parse_errors(meta_validator, errors) do |linenum, column, path, message|
-      p "#{linenum}:#{column} [#{path}] #{message}" # default kwalify style for now
+      p "[#{path}] #{message}"
     end
     raise "Unable to continue due to invalid schema #{schema_name}" unless status
-    status
+    document
   end
 
   def parse_errors( validator, errors )
@@ -83,17 +85,21 @@ class SpecificationParser
   def parse_paths( paths=[] )
     paths.each do |p|
       raise "The expected file #{p} does not exist." if not File.exist?(p)
-      yield File.extname(p), Kwalify::Yaml.load_file(p)
+      yield File.basename(p), File.read(p)
     end
   end
 
 end
 
-#e = SpecificationParser.new()
-#e.load_schema_files("/home/msavy/schema_test/dumb.yaml")
-#p e.schemas
-#
+e = SpecificationParser.new()
+e.load_schema_files("/home/msavy/work/boxgrinder-appliances/schemas/appliance-schema-0.9.x.yaml")
+e.load_specification_files("/home/msavy/work/boxgrinder-appliances/testing-appliances/schema/0.9.x-invalid.appl")
 
+
+
+#p e.schemas
+
+=begin
 validator = Kwalify::MetaValidator.instance()
 
 # validate schema definition
@@ -123,5 +129,6 @@ if errors && !errors.empty?
     puts "#{e.linenum}:#{e.column} [#{e.path}] #{e.message}"
   end
 end
+=end
 
 
