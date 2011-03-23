@@ -41,17 +41,36 @@ class SpecificationParser
     #then it is unclear which set of error messages to print. So we must come up with some signatures
     #to determine the schema it is attempting to use. OR if all are wrong default to a certain schema?
     #need to discuss what option is best
-    schema_name = "appliance-schema-0.9.x.yaml" #HACK
-    schema = @schemas[schema_name]
-    #validator = Kwalify::Validator.new( schema ) #Fixed schema for now
-    validator = ApplianceValidator.new( schema )
+    sorted_schemas = @schemas.sort
+    head_schema = sorted_schemas.pop() #First we try the highest version number schema.
+    head_errors = []
+    #If all fail only return errors for the head spec
+    specification_document = _validate_specification(head_schema[1],specification_yaml){|errors| head_errors=errors}
+
+    #Attempt other schemas if head fails
+    until sorted_schemas.empty? or head_errors.empty?
+      schema = sorted_schemas.pop()
+      schema_errors = []
+      specification_document = _validate_specification(schema[1],specification_yaml){|errors| schema_errors=errors}
+      if schema_errors.empty?
+        head_errors.clear()
+        break #If succeeded in validating against an old schema
+      end
+    end 
+
+    err_flag = parse_errors(head_errors) do |linenum, column, path, message|
+     p "[ln #{linenum}, col #{column}] [#{path}] #{message}\n" # default kwalify style for now
+    end 
+
+    raise %(The appliance specification "#{specification_name}" was invalid according to schema "#{head_schema[0]}") if err_flag
+    specification_document
+  end
+
+  def _validate_specification( schema_document, specification_yaml )
+    validator = ApplianceValidator.new( schema_document )
     parser = Kwalify::Yaml::Parser.new( validator )
     document = parser.parse( specification_yaml )
-    errors = parser.errors()
-    status = parse_errors(validator, errors) do |linenum, column, path, message|
-      p "[ln #{linenum}, col #{column}] [#{path}] #{message}\n" # default kwalify style for now
-    end
-    raise %(The appliance specification "#{specification_name}" was invalid according to schema "#{schema_name}") unless status
+    yield parser.errors()
     document
   end
 
@@ -65,22 +84,24 @@ class SpecificationParser
     #The CLI app seems to unintentionally work around the issue.
     #Only validate using older/less useful method
     errors = meta_validator.validate( document )
-    status = parse_errors(meta_validator, errors) do |linenum, column, path, message|
+
+    errors = parse_errors(errors) do |linenum, column, path, message|
       p "[#{path}] #{message}"
     end
-    raise "Unable to continue due to invalid schema #{schema_name}" unless status
+
+    raise "Unable to continue due to invalid schema #{schema_name}" if errors
     document
   end
 
-  def parse_errors( validator, errors )
-    return_status=true
-    if validator && !errors.empty?#Then there was a problem
+  def parse_errors( errors )
+    p_errs=false
+    if errors && !errors.empty? #Then there was a problem
       errors.each do |err|
         yield err.linenum, err.column, err.path, err.message
       end
-      return_status=false
+      p_errs=true
     end
-    return_status
+    p_errs
   end
 
   def parse_paths( paths=[] )
@@ -94,43 +115,9 @@ end
 
 e = SpecificationParser.new()
 e.load_schema_files("/home/msavy/work/boxgrinder-appliances/schemas/appliance-schema-0.9.x.yaml")
-#e.load_specification_files("/home/msavy/work/boxgrinder-appliances/testing-appliances/schema/0.9.x-invalid.appl")
+e.load_schema_files("/home/msavy/work/boxgrinder-appliances/schemas/appliance-schema-0.8.x.yaml")
 e.load_specification_files("/home/msavy/work/boxgrinder-appliances/testing-appliances/schema/0.9.x.appl")
-
-
-
-#p e.schemas
-
-=begin
-validator = Kwalify::MetaValidator.instance()
-
-# validate schema definition
-#parser = Kwalify::Yaml::Parser.new(validator)
-#parser.preceding_alias = true
-input = Kwalify::Yaml.load_file('/home/msavy/schema_test/dumb.yaml')
-
-#Do _not_ use the kwalify parser for meta-parsing
-#Parser for the meta is buggy and does not work as documented!
-#The CLI app seems to unintentionally work around the issue.
-#Only validate using older method
-
-errors = validator.validate(input)
-
-for e in errors
-  puts "[#{e.path}] #{e.message}"
-end if errors && !errors.empty?
-
-schema = Kwalify::Yaml.load_file('/home/msavy/work/boxgrinder-appliances/schemas/appliance-schema-0.9.x.yaml')
-val_2 = Kwalify::Validator.new(schema)
-parser = Kwalify::Yaml::Parser.new(val_2)
-document = parser.parse_file('/home/msavy/work/boxgrinder-appliances/testing-appliances/schema/0.9.x-invalid.appl')
-
-errors = parser.errors()
-if errors && !errors.empty?
-  for e in errors
-    puts "#{e.linenum}:#{e.column} [#{e.path}] #{e.message}"
-  end
-end
-=end
+e.load_specification_files("/home/msavy/work/boxgrinder-appliances/testing-appliances/schema/0.8.x.appl")
+e.load_specification_files("/home/msavy/work/boxgrinder-appliances/testing-appliances/schema/0.9.x-invalid.appl")
 
 
