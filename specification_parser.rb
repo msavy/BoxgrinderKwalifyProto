@@ -1,13 +1,12 @@
 require 'rubygems'
 require 'kwalify'
+require 'appliance_validator'
 
 class SpecificationParser
 
-  private
-  attr_writer :schemas
-
   public
   attr_reader :schemas
+  attr_reader :specifications
 
   def initialize()
     @schemas = {}
@@ -36,19 +35,21 @@ class SpecificationParser
 
   private
 
+  # TODO catch Kwalify::SyntaxError?
   def validate_specification( specification_name, specification_yaml )
     #Try to identify which schema to use, we can't just try each one, because if they are all wrong
     #then it is unclear which set of error messages to print. So we must come up with some signatures
     #to determine the schema it is attempting to use. OR if all are wrong default to a certain schema?
     #need to discuss what option is best
-    schema_name = "appliance-schema-0.9.x.yaml"
+    schema_name = "appliance-schema-0.9.x.yaml" #HACK
     schema = @schemas[schema_name]
-    validator = Kwalify::Validator.new( schema ) #Fixed schema for now
+    #validator = Kwalify::Validator.new( schema ) #Fixed schema for now
+    validator = ApplianceValidator.new( schema )
     parser = Kwalify::Yaml::Parser.new( validator )
     document = parser.parse( specification_yaml )
     errors = parser.errors()
     status = parse_errors(validator, errors) do |linenum, column, path, message|
-      p "ln #{linenum}: col#{column} [#{path}] #{message}\n" # default kwalify style for now
+      p "[ln #{linenum}, col #{column}] [#{path}] #{message}\n" # default kwalify style for now
     end
     raise %(The appliance specification "#{specification_name}" was invalid according to schema "#{schema_name}") unless status
     document
@@ -93,7 +94,8 @@ end
 
 e = SpecificationParser.new()
 e.load_schema_files("/home/msavy/work/boxgrinder-appliances/schemas/appliance-schema-0.9.x.yaml")
-e.load_specification_files("/home/msavy/work/boxgrinder-appliances/testing-appliances/schema/0.9.x-invalid.appl")
+#e.load_specification_files("/home/msavy/work/boxgrinder-appliances/testing-appliances/schema/0.9.x-invalid.appl")
+e.load_specification_files("/home/msavy/work/boxgrinder-appliances/testing-appliances/schema/0.9.x.appl")
 
 
 
