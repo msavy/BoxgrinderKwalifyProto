@@ -37,14 +37,9 @@ class SpecificationParser
 
   # TODO catch Kwalify::SyntaxError?
   def validate_specification( specification_name, specification_yaml )
-    #Try to identify which schema to use, we can't just try each one, because if they are all wrong
-    #then it is unclear which set of error messages to print. So we must come up with some signatures
-    #to determine the schema it is attempting to use. OR if all are wrong default to a certain schema?
-    #need to discuss what option is best
     sorted_schemas = @schemas.sort
-    head_schema = sorted_schemas.pop() #First we try the highest version number schema.
-    head_errors = []
-    #If all fail only return errors for the head spec
+    head_schema = sorted_schemas.pop() #Try the highest version schema first.
+    head_errors = [] #If all schemas fail only return errors for the head spec
     specification_document = _validate_specification(head_schema[1],specification_yaml){|errors| head_errors=errors}
 
     #Attempt other schemas if head fails
@@ -59,7 +54,7 @@ class SpecificationParser
     end 
 
     err_flag = parse_errors(head_errors) do |linenum, column, path, message|
-     p "[ln #{linenum}, col #{column}] [#{path}] #{message}\n" # default kwalify style for now
+     p "[ln #{linenum}, col #{column}] [#{path}] #{message}\n" # kwalify own parser
     end 
 
     raise %(The appliance specification "#{specification_name}" was invalid according to schema "#{head_schema[0]}") if err_flag
@@ -79,14 +74,12 @@ class SpecificationParser
     meta_validator = Kwalify::MetaValidator.instance()
     # validate schema definition
     document = Kwalify::Yaml.load( schema_yaml )
-    #Do _NOT_ use the Kwalify parser for Meta-parsing!
-    #Parser for the meta is buggy and does not work as documented!
-    #The CLI app seems to unintentionally work around the issue.
-    #Only validate using older/less useful method
+    #Do _NOT_ use the Kwalify parser for Meta-parsing! Parser for the meta is buggy and does not work as documented!
+    #The CLI app seems to unintentionally work around the issue. Only validate using older/less useful method
     errors = meta_validator.validate( document )
 
     errors = parse_errors(errors) do |linenum, column, path, message|
-      p "[#{path}] #{message}"
+      p "[#{path}] #{message}"#Internal parser has no linenum/col support
     end
 
     raise "Unable to continue due to invalid schema #{schema_name}" if errors
@@ -114,10 +107,8 @@ class SpecificationParser
 end
 
 e = SpecificationParser.new()
-e.load_schema_files("/home/msavy/work/boxgrinder-appliances/schemas/appliance-schema-0.9.x.yaml")
-e.load_schema_files("/home/msavy/work/boxgrinder-appliances/schemas/appliance-schema-0.8.x.yaml")
-e.load_specification_files("/home/msavy/work/boxgrinder-appliances/testing-appliances/schema/0.9.x.appl")
-e.load_specification_files("/home/msavy/work/boxgrinder-appliances/testing-appliances/schema/0.8.x.appl")
-e.load_specification_files("/home/msavy/work/boxgrinder-appliances/testing-appliances/schema/0.9.x-invalid.appl")
-
-
+e.load_schema_files("schemas/appliance-schema-0.9.x.yaml")
+e.load_schema_files("schemas/appliance-schema-0.8.x.yaml")
+p "0.9.x spec validates!" if e.load_specification_files("appliances/0.9.x.appl")
+p "0.8.x spec validates!"  if e.load_specification_files("appliances/0.8.x.appl")
+e.load_specification_files("appliances/0.9.x-invalid.appl")
