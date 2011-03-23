@@ -78,11 +78,10 @@ class SpecificationParser
     #The CLI app seems to unintentionally work around the issue. Only validate using older/less useful method
     errors = meta_validator.validate( document )
 
-    errors = parse_errors(errors) do |linenum, column, path, message|
+    err_flag = parse_errors(errors) do |linenum, column, path, message|
       p "[#{path}] #{message}"#Internal parser has no linenum/col support
     end
-
-    raise "Unable to continue due to invalid schema #{schema_name}" if errors
+    raise "Unable to continue due to invalid schema #{schema_name}" if err_flag
     document
   end
 
