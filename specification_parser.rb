@@ -1,12 +1,18 @@
 require 'rubygems'
 require 'kwalify'
 require 'appliance_validator'
+require 'appliance_transformer'
 
 class SpecificationParser
 
   public
   attr_reader :schemas
   attr_reader :specifications
+  attr_reader :messages
+
+  @@messages = {
+      :pattern_unmatch => "'%s' not a valid pattern for '%s'"
+  }
 
   def initialize()
     @schemas = {}
@@ -29,7 +35,7 @@ class SpecificationParser
 
   def load_specification_files( *specification_paths )
     parse_paths(specification_paths) do |name, data|
-      @specifications[p]= validate_specification(name,data)
+      @specifications[p]=validate_specification(name,data)
     end
   end
 
@@ -47,14 +53,14 @@ class SpecificationParser
       schema = sorted_schemas.pop()
       schema_errors = []
       specification_document = _validate_specification(schema[1],specification_yaml){|errors| schema_errors=errors}
-      if schema_errors.empty?
-        head_errors.clear()
-        break #If succeeded in validating against an old schema
+      if schema_errors.empty? #If succeeded in validating against an old schema
+        #We're not at head, call for transformation to latest style, schema[0] is name
+        return TransformHelper.new().transform( schema[0], specification_document)
       end
     end 
-
+    #If all schemas fail then we assume they are using the latest schema..
     err_flag = parse_errors(head_errors) do |linenum, column, path, message|
-     p "[ln #{linenum}, col #{column}] [#{path}] #{message}\n" # kwalify own parser
+      puts "[line #{linenum}, col #{column}] [#{path}] #{message}" # kwalify own parser
     end 
 
     raise %(The appliance specification "#{specification_name}" was invalid according to schema "#{head_schema[0]}") if err_flag
@@ -79,19 +85,38 @@ class SpecificationParser
     errors = meta_validator.validate( document )
 
     err_flag = parse_errors(errors) do |linenum, column, path, message|
-      p "[#{path}] #{message}"#Internal parser has no linenum/col support
+      puts "[#{path}] #{message}"#Internal parser has no linenum/col support
     end
     raise "Unable to continue due to invalid schema #{schema_name}" if err_flag
     document
+  end
+
+  def resolve_name( _path )
+    path=_path.split("/")
+    return path unless path.is_a?(Array)
+    path.reverse_each do |elem|
+      unless elem =~ /[\d]+/ #unless integer
+        return elem
+      end
+    end
+    "ROOT"
   end
 
   def parse_errors( errors )
     p_errs=false
     if errors && !errors.empty? #Then there was a problem
       errors.each do |err|
-        yield err.linenum, err.column, err.path, err.message
+
+      case err.error_symbol
+        when :pattern_unmatch then
+        message = sprintf(@@messages[:pattern_unmatch],err.value,resolve_name(err.path))
+        else
+        message = err.message
       end
+
+      yield err.linenum, err.column, err.path, message
       p_errs=true
+      end
     end
     p_errs
   end
@@ -99,15 +124,42 @@ class SpecificationParser
   def parse_paths( paths=[] )
     paths.each do |p|
       raise "The expected file #{p} does not exist." if not File.exist?(p)
-      yield File.basename(p), File.read(p)
+      #Get rid of file extension from name blah.yaml => blah, fred.xml => fred
+      yield File.basename(p).gsub(/\.[^\.]+$/,''), File.read(p)
     end
   end
 
+  public
+
+  class TransformHelper
+    include ApplianceTransformers
+    
+    def method_name( name )
+      name.gsub(/[-\.]/,'_')
+    end
+
+    def transform(name, doc)
+      begin
+        self.send(self.method_name(name),doc)
+      rescue #Can get rid of this and assume there is no transform?
+        puts "No transformation existed for #{name}.."
+        raise
+      end
+    end
+
+    def method_missing(sym, *args, &block) #Print trace message
+      puts "No document conversion method found for '#{sym}'. Available conversion methods: [#{ApplianceTransformers::instance_methods(false).sort.join(", ")}]"
+    end
+  end
 end
 
 e = SpecificationParser.new()
-e.load_schema_files("schemas/appliance-schema-0.9.x.yaml")
-e.load_schema_files("schemas/appliance-schema-0.8.x.yaml")
-p "0.9.x spec validates!" if e.load_specification_files("appliances/0.9.x.appl")
-p "0.8.x spec validates!"  if e.load_specification_files("appliances/0.8.x.appl")
-e.load_specification_files("appliances/0.9.x-invalid.appl")
+e.load_schema_files("schemas/appliance_schema_0.9.1.yaml")
+e.load_schema_files("schemas/appliance_schema_0.8.x.yaml")
+puts "0.9.x spec validates!" if e.load_specification_files("appliances/0.9.x.appl")
+puts "0.8.x spec validates!" if e.load_specification_files("appliances/0.8.x.appl")
+begin
+  e.load_specification_files("appliances/0.9.x-invalid.appl")
+rescue RuntimeError => f
+  puts "#{f.message}\n#{f.backtrace.join("\n")} "
+end

@@ -10,7 +10,7 @@ class ApplianceValidator < Kwalify::Validator
     case rule.name
       when 'Repository' #enforce baseurl xor mirrorlist
         unless value['baseurl'].nil? ^ value['mirrorlist'].nil?
-          errors << Kwalify::ValidationError.new("must specify a baseurl xor a mirrorlist", path)
+          errors << Kwalify::ValidationError.new("must specify either a baseurl or a mirrorlist, not both", path)
         end
     end
   end
