@@ -55,9 +55,7 @@ class SpecificationParser
       specification_document = _validate_specification(schema[1],specification_yaml){|errors| schema_errors=errors}
       if schema_errors.empty? #If succeeded in validating against an old schema
         #We're not at head, call for transformation to latest style, schema[0] is name
-        doc = TransformHelper.new().transform( schema[0], specification_document)
-        p doc
-        return doc
+        return TransformHelper.new().transform( schema[0], specification_document )
       end
     end 
     #If all schemas fail then we assume they are using the latest schema..
