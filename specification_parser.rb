@@ -30,12 +30,12 @@ class SpecificationParser
   end
 
   def load_specification( specification_name, specification_content )
-    @schemas[specification_name]=validate_schema(specification_name,specification_content)
+    @specifications[specification_name]=validate_schema(specification_name,specification_content)
   end
 
   def load_specification_files( *specification_paths )
     parse_paths(specification_paths) do |name, data|
-      @specifications[p]=validate_specification(name,data)
+      @specifications[name]=validate_specification(name,data)
     end
   end
 
@@ -55,7 +55,9 @@ class SpecificationParser
       specification_document = _validate_specification(schema[1],specification_yaml){|errors| schema_errors=errors}
       if schema_errors.empty? #If succeeded in validating against an old schema
         #We're not at head, call for transformation to latest style, schema[0] is name
-        return TransformHelper.new().transform( schema[0], specification_document)
+        doc = TransformHelper.new().transform( schema[0], specification_document)
+        p doc
+        return doc
       end
     end 
     #If all schemas fail then we assume they are using the latest schema..
@@ -163,3 +165,6 @@ begin
 rescue RuntimeError => f
   puts "#{f.message}\n#{f.backtrace.join("\n")} "
 end
+
+e.schemas.each_pair{ |k,v| puts "#{k} - #{v.inspect}" }
+e.specifications.each_pair{ |k,v| puts "#{k} - #{v.inspect}" }
